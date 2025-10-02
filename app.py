@@ -1,117 +1,93 @@
-from flask import Flask, request, jsonify, render_template, g
+from flask import Flask, request, jsonify, render_template, redirect, url_for, session
 import sqlite3
 
 app = Flask(__name__)
-DATABASE = 'tasks.db'
+app.secret_key = "segredo"  # necessário para sessões
 
-# ---------------- Conexão com SQLite ----------------
+DATABASE = "tasks.db"
+
 def get_db():
-    db = getattr(g, '_database', None)
-    if db is None:
-        db = g._database = sqlite3.connect(DATABASE)
-        db.row_factory = sqlite3.Row
-    return db
+    conn = sqlite3.connect(DATABASE)
+    conn.row_factory = sqlite3.Row
+    return conn
 
-@app.teardown_appcontext
-def close_connection(exception):
-    db = getattr(g, '_database', None)
-    if db is not None:
-        db.close()
-
-# ---------------- Rotas Front-end ----------------
-@app.route('/')
-def index():
-    return render_template('index.html')
-
-# ---------------- Usuários ----------------
-@app.route('/users', methods=['POST'])
-def create_user():
-    data = request.json
-    db = get_db()
-    try:
-        db.execute('INSERT INTO users (email, password) VALUES (?, ?)',
-                   (data['email'], data['password']))
-        db.commit()
-        return jsonify({"success": True}), 201
-    except sqlite3.IntegrityError:
-        return jsonify({"error": "Email já existe"}), 400
-
-@app.route('/users/<int:user_id>', methods=['GET'])
-def get_user(user_id):
-    db = get_db()
-    cur = db.execute('SELECT id, email FROM users WHERE id=?', (user_id,))
-    user = cur.fetchone()
-    if user:
-        return jsonify(dict(user))
-    return jsonify({"error": "Usuário não encontrado"}), 404
-
-# ---------------- Sessão ----------------
-@app.route('/login', methods=['POST'])
+# ---------------------
+# ROTAS DE AUTENTICAÇÃO
+# ---------------------
+@app.route("/login", methods=["GET", "POST"])
 def login():
-    data = request.json
-    db = get_db()
-    cur = db.execute('SELECT * FROM users WHERE email=? AND password=?',
-                     (data['email'], data['password']))
-    user = cur.fetchone()
-    if user:
-        return jsonify({"success": True, "user_id": user["id"]})
-    return jsonify({"success": False}), 401
+    if request.method == "POST":
+        email = request.form["email"]
+        password = request.form["password"]
 
-@app.route('/logout', methods=['POST'])
+        db = get_db()
+        user = db.execute("SELECT * FROM users WHERE email=? AND password=?", (email, password)).fetchone()
+
+        if user:
+            session["user_id"] = user["id"]
+            return redirect(url_for("index"))
+        else:
+            return "Login inválido!"
+    return render_template("login.html")
+
+@app.route("/register", methods=["GET", "POST"])
+def register():
+    if request.method == "POST":
+        email = request.form["email"]
+        password = request.form["password"]
+
+        db = get_db()
+        db.execute("INSERT INTO users (email, password) VALUES (?, ?)", (email, password))
+        db.commit()
+        return redirect(url_for("login"))
+    return render_template("register.html")
+
+@app.route("/logout")
 def logout():
-    return jsonify({"success": True})
+    session.clear()
+    return redirect(url_for("login"))
 
-# ---------------- Tarefas ----------------
-@app.route('/tasks', methods=['GET'])
-def list_tasks():
-    user_id = request.args.get('user_id')
-    if not user_id:
-        return jsonify({"error": "user_id necessário"}), 400
+# ---------------------
+# ROTAS DE TAREFAS
+# ---------------------
+@app.route("/")
+def index():
+    if "user_id" not in session:
+        return redirect(url_for("login"))  # só acessa se estiver logado
     db = get_db()
-    cur = db.execute('SELECT * FROM tasks WHERE user_id=?', (user_id,))
-    tasks = [dict(row) for row in cur.fetchall()]
-    return jsonify(tasks)
+    tasks = db.execute("SELECT * FROM tasks WHERE user_id=?", (session["user_id"],)).fetchall()
+    return render_template("index.html", tasks=tasks)
 
-@app.route('/tasks', methods=['POST'])
+@app.route("/tasks", methods=["POST"])
 def create_task():
-    data = request.json
+    if "user_id" not in session:
+        return redirect(url_for("login"))
+    title = request.form["title"]
     db = get_db()
-    db.execute('INSERT INTO tasks (user_id, title, description, status, due_date) VALUES (?, ?, ?, ?, ?)',
-               (data['user_id'], data['title'], data.get('description', ''),
-                data.get('status', 'todo'), data.get('due_date')))
+    db.execute("INSERT INTO tasks (user_id, title, status) VALUES (?, ?, ?)", (session["user_id"], title, "todo"))
     db.commit()
-    return jsonify({"success": True}), 201
+    return redirect(url_for("index"))
 
-@app.route('/tasks/<int:task_id>', methods=['GET'])
-def get_task(task_id):
-    db = get_db()
-    cur = db.execute('SELECT * FROM tasks WHERE id=?', (task_id,))
-    task = cur.fetchone()
-    if task:
-        return jsonify(dict(task))
-    return jsonify({"error":"Task not found"}), 404
-
-@app.route('/tasks/<int:task_id>', methods=['PATCH'])
-def update_task(task_id):
-    data = request.json
-    db = get_db()
-    keys = ['title','description','status','due_date']
-    updates = [f"{k} = ?" for k in keys if k in data]
-    if not updates:
-        return jsonify({"error":"Nada para atualizar"}), 400
-    values = [data[k] for k in keys if k in data]
-    values.append(task_id)
-    db.execute(f'UPDATE tasks SET {", ".join(updates)} WHERE id=?', values)
-    db.commit()
-    return jsonify({"success": True})
-
-@app.route('/tasks/<int:task_id>', methods=['DELETE'])
+@app.route("/tasks/<int:task_id>/delete", methods=["POST"])
 def delete_task(task_id):
+    if "user_id" not in session:
+        return redirect(url_for("login"))
     db = get_db()
-    db.execute('DELETE FROM tasks WHERE id=?', (task_id,))
+    db.execute("DELETE FROM tasks WHERE id=? AND user_id=?", (task_id, session["user_id"]))
     db.commit()
-    return '', 204
+    return redirect(url_for("index"))
 
-# ---------------- Executar ----------------
-if __name__ == '__main__':
+@app.route("/tasks/<int:task_id>/toggle", methods=["POST"])
+def toggle_task(task_id):
+    if "user_id" not in session:
+        return redirect(url_for("login"))
+    db = get_db()
+    task = db.execute("SELECT * FROM tasks WHERE id=? AND user_id=?", (task_id, session["user_id"])).fetchone()
+    if task:
+        new_status = "done" if task["status"] == "todo" else "todo"
+        db.execute("UPDATE tasks SET status=? WHERE id=? AND user_id=?", (new_status, task_id, session["user_id"]))
+        db.commit()
+    return redirect(url_for("index"))
+
+if __name__ == "__main__":
     app.run(debug=True)

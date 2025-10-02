@@ -1,135 +1,43 @@
 <!DOCTYPE html>
-<html>
+<html lang="pt-br">
 <head>
-    <title>Task Manager RESTful</title>
-    <style>
-        /* Estilo simples para o modal */
-        #registerModal {
-            display: none;
-            position: fixed;
-            top: 50%; left: 50%;
-            transform: translate(-50%, -50%);
-            background: #f0f0f0;
-            padding: 20px;
-            border: 1px solid #333;
-        }
-        #modalBackdrop {
-            display: none;
-            position: fixed;
-            top:0; left:0; width:100%; height:100%;
-            background: rgba(0,0,0,0.3);
-        }
-    </style>
+    <meta charset="UTF-8">
+    <title>Minhas Tarefas</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
-<h1>Task Manager RESTful</h1>
+    <header>
+        <nav>
+            <a href="{{ url_for('logout') }}">Sair</a>
+        </nav>
+    </header>
 
-<h2>Login</h2>
-<form id="loginForm">
-  Email: <input type="email" id="email"><br>
-  Password: <input type="password" id="password"><br>
-  <button type="submit">Login</button>
-</form>
-<button id="openRegister">Cadastrar-se</button>
+    <h1>Minhas Tarefas</h1>
 
-<h2>Tarefas</h2>
-<ul id="tasks"></ul>
+    <form method="POST" action="{{ url_for('create_task') }}">
+        <input type="text" name="title" placeholder="Nova tarefa" required>
+        <button type="submit">Adicionar</button>
+    </form>
 
-<form id="taskForm">
-  Título: <input type="text" id="title"><br>
-  Descrição: <input type="text" id="description"><br>
-  <button type="submit">Adicionar Tarefa</button>
-</form>
-
-<!-- Modal de cadastro -->
-<div id="modalBackdrop"></div>
-<div id="registerModal">
-    <h3>Cadastro de Usuário</h3>
-    Email: <input type="email" id="regEmail"><br>
-    Senha: <input type="password" id="regPassword"><br>
-    <button id="registerBtn">Cadastrar</button>
-    <button id="closeModal">Fechar</button>
-</div>
-
-<script>
-let user_id = null;
-
-// Login
-loginForm.onsubmit = async e => {
-  e.preventDefault();
-  const res = await fetch('/login', {
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({email: email.value, password: password.value})
-  });
-  const data = await res.json();
-  if(data.success){
-    alert('Login OK');
-    user_id = data.user_id;
-    loadTasks();
-  } else alert('Login falhou');
-}
-
-// Abrir modal de cadastro
-document.getElementById('openRegister').onclick = () => {
-    document.getElementById('registerModal').style.display = 'block';
-    document.getElementById('modalBackdrop').style.display = 'block';
-}
-
-// Fechar modal
-document.getElementById('closeModal').onclick = () => {
-    document.getElementById('registerModal').style.display = 'none';
-    document.getElementById('modalBackdrop').style.display = 'none';
-}
-
-// Cadastro de usuário
-document.getElementById('registerBtn').onclick = async () => {
-    const email = document.getElementById('regEmail').value;
-    const password = document.getElementById('regPassword').value;
-    const res = await fetch('/users', {
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({email, password})
-    });
-    const data = await res.json();
-    if(data.success){
-        alert('Cadastro realizado com sucesso!');
-        document.getElementById('registerModal').style.display = 'none';
-        document.getElementById('modalBackdrop').style.display = 'none';
-    } else {
-        alert('Erro: ' + (data.error || 'Não foi possível cadastrar'));
-    }
-}
-
-// Criar tarefa
-taskForm.onsubmit = async e => {
-  e.preventDefault();
-  if(!user_id) { alert("Faça login primeiro"); return; }
-  await fetch('/tasks', {
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({
-      user_id, 
-      title: title.value, 
-      description: description.value
-    })
-  });
-  loadTasks();
-}
-
-// Listar tarefas
-async function loadTasks(){
-  if(!user_id) return;
-  const res = await fetch(`/tasks?user_id=${user_id}`);
-  const tasks = await res.json();
-  const ul = document.getElementById('tasks');
-  ul.innerHTML = '';
-  tasks.forEach(t => {
-    const li = document.createElement('li');
-    li.textContent = `${t.id} - ${t.title} (${t.status})`;
-    ul.appendChild(li);
-  });
-}
-</script>
+    <ul>
+        {% for task in tasks %}
+            <li>
+                {{ task['title'] }} - 
+                {% if task['status'] == 'todo' %}
+                    a fazer
+                {% elif task['status'] == 'done' %}
+                    feito
+                {% else %}
+                    {{ task['status'] }}
+                {% endif %}
+                <form method="POST" action="{{ url_for('toggle_task', task_id=task['id']) }}" style="display:inline">
+                    <button type="submit">Alterar Status</button>
+                </form>
+                <form method="POST" action="{{ url_for('delete_task', task_id=task['id']) }}" style="display:inline">
+                    <button type="submit">Excluir</button>
+                </form>
+            </li>
+        {% endfor %}
+    </ul>
 </body>
 </html>
