@@ -100,3 +100,36 @@ document.getElementById('registerBtn').onclick = async () => {
         alert('Erro: ' + (data.error || 'Não foi possível cadastrar'));
     }
 }
+
+// Criar tarefa
+taskForm.onsubmit = async e => {
+  e.preventDefault();
+  if(!user_id) { alert("Faça login primeiro"); return; }
+  await fetch('/tasks', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({
+      user_id, 
+      title: title.value, 
+      description: description.value
+    })
+  });
+  loadTasks();
+}
+
+// Listar tarefas
+async function loadTasks(){
+  if(!user_id) return;
+  const res = await fetch(`/tasks?user_id=${user_id}`);
+  const tasks = await res.json();
+  const ul = document.getElementById('tasks');
+  ul.innerHTML = '';
+  tasks.forEach(t => {
+    const li = document.createElement('li');
+    li.textContent = `${t.id} - ${t.title} (${t.status})`;
+    ul.appendChild(li);
+  });
+}
+</script>
+</body>
+</html>
