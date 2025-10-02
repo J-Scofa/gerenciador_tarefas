@@ -40,3 +40,63 @@
   Descrição: <input type="text" id="description"><br>
   <button type="submit">Adicionar Tarefa</button>
 </form>
+
+<!-- Modal de cadastro -->
+<div id="modalBackdrop"></div>
+<div id="registerModal">
+    <h3>Cadastro de Usuário</h3>
+    Email: <input type="email" id="regEmail"><br>
+    Senha: <input type="password" id="regPassword"><br>
+    <button id="registerBtn">Cadastrar</button>
+    <button id="closeModal">Fechar</button>
+</div>
+
+<script>
+let user_id = null;
+
+// Login
+loginForm.onsubmit = async e => {
+  e.preventDefault();
+  const res = await fetch('/login', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({email: email.value, password: password.value})
+  });
+  const data = await res.json();
+  if(data.success){
+    alert('Login OK');
+    user_id = data.user_id;
+    loadTasks();
+  } else alert('Login falhou');
+}
+
+// Abrir modal de cadastro
+document.getElementById('openRegister').onclick = () => {
+    document.getElementById('registerModal').style.display = 'block';
+    document.getElementById('modalBackdrop').style.display = 'block';
+}
+
+// Fechar modal
+document.getElementById('closeModal').onclick = () => {
+    document.getElementById('registerModal').style.display = 'none';
+    document.getElementById('modalBackdrop').style.display = 'none';
+}
+
+// Cadastro de usuário
+document.getElementById('registerBtn').onclick = async () => {
+    const email = document.getElementById('regEmail').value;
+    const password = document.getElementById('regPassword').value;
+    const res = await fetch('/users', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({email, password})
+    });
+    const data = await res.json();
+    if(data.success){
+        alert('Cadastro realizado com sucesso!');
+        document.getElementById('registerModal').style.display = 'none';
+        document.getElementById('modalBackdrop').style.display = 'none';
+    } else {
+        alert('Erro: ' + (data.error || 'Não foi possível cadastrar'));
+    }
+}
